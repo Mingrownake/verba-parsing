@@ -12,8 +12,7 @@ import httpx
 async def main():
   products = get_all_items()
   items = []
-  timeout = 60.0 #Заглушка
-  async with httpx.AsyncClient(timeout=timeout) as client:
+  async with httpx.AsyncClient(timeout=None) as client:
     tasks = [build_item(client, product) for product in products]
     items = await asyncio.gather(*tasks)
   result = pd.DataFrame(items)
@@ -83,6 +82,7 @@ def get_all_items():
 def get_driver() -> webdriver:
   options = Options()
   options.add_argument("User-Agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 YaBrowser/25.10.0.0 Safari/537.36")
+  options.add_argument("--headless")
   options.add_argument("--disable-blink-features=AutomationControlled")
   driver = webdriver.Chrome(options=options)
   return driver
