@@ -17,7 +17,7 @@ async def main():
     items = await asyncio.gather(*tasks)
   result = pd.DataFrame(items)
   result = result[result["url"] != "NONE"] #Оставлю пока так, чтобы NONE не ловить
-  result.to_excel("test.xlsx")
+  result.to_excel("test.xlsx", index=False)
 
 async def get_item_info(client: httpx.AsyncClient, item_id: str):
   url_info = f"{get_wb_cnd(item_id)}/info/ru/card.json"
