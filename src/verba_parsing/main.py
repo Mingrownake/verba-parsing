@@ -10,29 +10,46 @@ import asyncio
 import httpx
 
 async def main():
-  products = test_selenium()
+  products = get_all_items()
   items = []
-  timeout = 60.0
+  timeout = 60.0 #Заглушка
   async with httpx.AsyncClient(timeout=timeout) as client:
-    tasks = [test_item(client, product) for product in products]
+    tasks = [build_item(client, product) for product in products]
     items = await asyncio.gather(*tasks)
   result = pd.DataFrame(items)
-  result = result[result["url"] != "NONE"]
+  result = result[result["url"] != "NONE"] #Оставлю пока так, чтобы NONE не ловить
   result.to_excel("test.xlsx")
 
 async def get_item_info(client: httpx.AsyncClient, item_id: str):
-  url = get_wb_cnd(item_id)
-  response = await client.get(url)
+  url_info = f"{get_wb_cnd(item_id)}/info/ru/card.json"
+  response = await client.get(url_info)
   data = {}
   if response.status_code == 200:
     data = response.json()
-    item_data = {}
+    photo_count = int(data.get("media").get("photo_count"))
+    tasks = get_photo_url(item_id, photo_count)
+    photo_link = ",".join(tasks)
     item_data = {
-        "description": data.get("description")
+        "description": data.get("description"),
+        "photo_link": photo_link,
+        "options": data.get("options")
     }
     return item_data
   
-    
+def get_photo_url(item_id: str, count: int):
+  result_list = []
+  base_url = get_wb_cnd(item_id)
+  for i in range(1, count + 1):
+    current_url = f"{base_url}/images/big/{i}.webp"
+    result_list.append(current_url)
+  return result_list
+
+def get_size_list(array) -> str:
+  sizes = []
+  for item in array:
+    sizes.append(item.get("name"))
+  return ",".join(sizes)
+
 def get_wb_cnd(item_id: str) -> str:
   part = ""
   vol = ""
@@ -46,10 +63,10 @@ def get_wb_cnd(item_id: str) -> str:
   elif len(item_id) == 7:
     part = item_id[0:4]
     vol = item_id[0:2]
-  host = "http://sam-basket-cdn-01mg.geobasket.ru"
-  return f"{host}/vol{vol}/part{part}/{item_id}/info/ru/card.json"
+  host = "https://sam-basket-cdn-01mg.geobasket.ru"
+  return f"{host}/vol{vol}/part{part}/{item_id}"
   
-def test_selenium():
+def get_all_items():
   page = 1
   base_url = f"https://www.wildberries.ru/__internal/u-search/exactmatch/ru/api/v18/search?appType=3&curr=rub&dest=-3217375&f14177451=15000203&hide_dtype=9;11&priceU=0;1000000&inheritFilters=false&lang=ru&query=пальто%20из%20натуральной%20шерсти&resultset=catalog&sort=popular&suppressSpellcheck=false"
 
@@ -79,24 +96,35 @@ def get_response(driver: webdriver, url: str):
   result = json.loads(all_page_text)
   return result
 
-async def test_item(client: httpx.AsyncClient, product):
+async def build_item(client: httpx.AsyncClient, product):
   min_rating = 4.5
   item = {
-    "url": f"NONE",
+    "url": "NONE",
     "article": "NONE",
     "name": "NONE",
     "price": "NONE",
     "description": "NONE",
-    "rating": ""
+    "photo_link": "NONE",
+    "options": "NONE",
+    "supplier": "NONE",
+    "supplier_url": "NONE",
+    "sizes":  "NONE",
+    "totalQuantity": "NONE",
+    "rating": "NONE",
+    "feedbacks": "NONE"
   }
-  rating = float(product.get('reviewRating'))
-  if rating >= min_rating:
+  rating = float(product.get('nmReviewRating'))
+  if rating > min_rating:
     id = str(product.get("id"))
     name = product.get("name")
     price = int(product.get("sizes")[0].get("price").get("product")) / 100
     subject_id = product.get("subjectId")
     kind_id = product.get("kindId")
     brand_id = product.get("brandId")
+    supplier = product.get("supplier")
+    sizes = get_size_list(product.get("sizes"))
+    totalQuantity = product.get("totalQuantity")
+    feedbacks = product.get("nmFeedbacks")
     item_info = await get_item_info(client, id)
     item = {
       "url": f"https://www.wildberries.ru/product/{id}/data?subject={subject_id}&kind={kind_id}&brand={brand_id}&lang=ru",
@@ -104,7 +132,14 @@ async def test_item(client: httpx.AsyncClient, product):
       "name": name,
       "price": price,
       "description": item_info.get("description"),
-      "rating": rating
+      "photo_link": item_info.get("photo_link"),
+      "options": item_info.get("options"),
+      "supplier": supplier,
+      "supplier_url": f"https://www.wildberries.ru/seller/{id}",
+      "sizes":  sizes,
+      "totalQuantity": totalQuantity,
+      "rating": rating,
+      "feedbacks": feedbacks
     }
   return item
 
