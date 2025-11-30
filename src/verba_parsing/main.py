@@ -1,5 +1,4 @@
 import pandas
-import requests
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -10,22 +9,46 @@ import math
 import asyncio
 import httpx
 
-def main():
-  result = test_selenium()
-  select_item_to_file(result)
+async def main():
+  products = test_selenium()
+  items = []
+  timeout = 60.0
+  async with httpx.AsyncClient(timeout=timeout) as client:
+    tasks = [test_item(client, product) for product in products]
+    results = await asyncio.gather(*tasks) 
+    print(results)
+  #result = pandas.DataFrame(items)
+  #result.to_excel("test.xlsx")
 
-def get_item_info(item_id: str):
-  print(f"Start: {item_id}")
-  url = f"https://sam-basket-cdn-01mg.geobasket.ru/vol{item_id[0:4]}/part{item_id[0:6]}/{item_id}/info/ru/card.json"
-  response = requests.get(url)
+async def get_item_info(client: httpx.AsyncClient, item_id: str):
+  url = get_wb_cnd(item_id)
+  response = await client.get(url)
   data = {}
   if response.status_code == 200:
     data = response.json()
-  item_info = {
-    "description": data.get("description")
-  }
-  return item_info
-
+    item_data = {}
+    item_data = {
+        "description": data.get("description")
+    }
+    return item_data
+  
+    
+def get_wb_cnd(item_id: str) -> str:
+  part = ""
+  vol = ""
+  part = item_id[0:6]
+  if len(item_id) == 9:
+    part = item_id[0:6]
+    vol = item_id[0:4]
+  elif len(item_id) == 8:
+    part = item_id[0:5]
+    vol = item_id[0:3]
+  elif len(item_id) == 7:
+    part = item_id[0:4]
+    vol = item_id[0:2]
+  host = "http://sam-basket-cdn-01mg.geobasket.ru"
+  return f"{host}/vol{vol}/part{part}/{item_id}/info/ru/card.json"
+  
 def test_selenium():
   page = 1
   base_url = f"https://www.wildberries.ru/__internal/u-search/exactmatch/ru/api/v18/search?appType=3&curr=rub&dest=-3217375&f14177451=15000203&hide_dtype=9;11&priceU=0;1000000&inheritFilters=false&lang=ru&query=пальто%20из%20натуральной%20шерсти&resultset=catalog&sort=popular&suppressSpellcheck=false"
@@ -56,30 +79,25 @@ def get_response(driver: webdriver, url: str):
   result = json.loads(all_page_text)
   return result
 
-
-def select_item_to_file(products):
-  items = []
+async def test_item(client: httpx.AsyncClient, product):
   min_rating = 4.5
-  for product in products:
-    rating = float(product.get('rating'))
-    if rating > min_rating:
-      id = product.get("id")
-      name = product.get("name")
-      price = int(product.get("sizes")[0].get("price").get("product")) / 100
-      subject_id = product.get("subjectId")
-      kind_id = product.get("kindId")
-      brand_id = product.get("brandId")
-      item_info = get_item_info(str(id))
-      item = {
-        "url": f"https://www.wildberries.ru/product/{id}/data?subject={subject_id}&kind={kind_id}&brand={brand_id}&lang=ru",
-        "article": id,
-        "name": name,
-        "price": price,
-        "description": item_info["description"]
-      }
-      items.append(item)
-  result = pandas.DataFrame(items)
-  result.to_excel("test.xlsx")
+  rating = float(product.get('rating'))
+  if rating > min_rating:
+    id = product.get("id")
+    name = product.get("name")
+    price = int(product.get("sizes")[0].get("price").get("product")) / 100
+    subject_id = product.get("subjectId")
+    kind_id = product.get("kindId")
+    brand_id = product.get("brandId")
+    item_info = await get_item_info(client, str(id))
+    item = {
+      "url": f"https://www.wildberries.ru/product/{id}/data?subject={subject_id}&kind={kind_id}&brand={brand_id}&lang=ru",
+      "article": id,
+      "name": name,
+      "price": price,
+      "description": item_info.get("description")
+    }
+    return item
 
 if __name__ == "__main__":
-  main()
+  asyncio.run(main())
