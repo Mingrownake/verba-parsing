@@ -1,4 +1,4 @@
-import pandas
+import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -15,10 +15,10 @@ async def main():
   timeout = 60.0
   async with httpx.AsyncClient(timeout=timeout) as client:
     tasks = [test_item(client, product) for product in products]
-    results = await asyncio.gather(*tasks) 
-    print(results)
-  #result = pandas.DataFrame(items)
-  #result.to_excel("test.xlsx")
+    items = await asyncio.gather(*tasks)
+  result = pd.DataFrame(items)
+  result = result[result["url"] != "NONE"]
+  result.to_excel("test.xlsx")
 
 async def get_item_info(client: httpx.AsyncClient, item_id: str):
   url = get_wb_cnd(item_id)
@@ -81,23 +81,32 @@ def get_response(driver: webdriver, url: str):
 
 async def test_item(client: httpx.AsyncClient, product):
   min_rating = 4.5
-  rating = float(product.get('rating'))
-  if rating > min_rating:
-    id = product.get("id")
+  item = {
+    "url": f"NONE",
+    "article": "NONE",
+    "name": "NONE",
+    "price": "NONE",
+    "description": "NONE",
+    "rating": ""
+  }
+  rating = float(product.get('reviewRating'))
+  if rating >= min_rating:
+    id = str(product.get("id"))
     name = product.get("name")
     price = int(product.get("sizes")[0].get("price").get("product")) / 100
     subject_id = product.get("subjectId")
     kind_id = product.get("kindId")
     brand_id = product.get("brandId")
-    item_info = await get_item_info(client, str(id))
+    item_info = await get_item_info(client, id)
     item = {
       "url": f"https://www.wildberries.ru/product/{id}/data?subject={subject_id}&kind={kind_id}&brand={brand_id}&lang=ru",
       "article": id,
       "name": name,
       "price": price,
-      "description": item_info.get("description")
+      "description": item_info.get("description"),
+      "rating": rating
     }
-    return item
+  return item
 
 if __name__ == "__main__":
   asyncio.run(main())
